@@ -1,16 +1,16 @@
 """
-Simple example of a service that saves items which can be added or requested from a separate process.
+Use the ipc_mngr to send raw bytes instead of pickling objects
 
 Example:
  ..code-block:: python
 
-     $ python tests/run_send_recv.py --listen
+     $ python tests/bytes_ack_nack/main.py --listen
 
      # New terminal
-     $ python tests/run_send_recv.py --send --name abc --value 1
-     $ python tests/run_send_recv.py --send --name fun --value 2
+     $ python tests/bytes_ack_nack/main.py --send --name abc --value 1
+     $ python tests/bytes_ack_nack/main.py --send --name fun --value 2
 
-     $ python tests/run_send_recv.py --list
+     $ python tests/bytes_ack_nack/main.py --list
      $   List Items:
      $     Item: abc = 1
      $     Item: fun = 2
@@ -18,16 +18,50 @@ Example:
 import ipc_mngr
 import argparse
 
+from bytes_com_mngr import BytesAckListener, BytesAckClient, BytesCommandParser
 
+
+@BytesCommandParser.add_cmd_type
 class Item(object):
+    ID = 0
+    NAME = "Item"
+
     def __init__(self, name='', value=0):
         self.name = name
         self.value = value
 
+    def decode(self, byts):
+        name, value = byts.split(b',')
+        self.name = name.decode('utf-8')
+        value = value.decode('utf-8')
+        try:
+            value = int(value)
+        except:
+            try:
+                value = float(value)
+            except:
+                pass
+        self.value = value
 
+    def __bytes__(self):
+        return b''.join((self.ID.to_bytes(1, 'big'),
+                         str(self.name).encode('utf-8'), b',',
+                         str(self.value).encode('utf-8')))
+
+
+@BytesCommandParser.add_cmd_type
 class ListItems(object):
+    ID = 1
+    NAME = "Item"
+
     def __init__(self, items=None):
         self.items = items or []
+
+    def decode(self, byts):
+        self.items = [BytesCommandParser.decode(item) for item in byts.split(b';') if len(item) > 0]
+
+    def __bytes__(self):
+        return self.ID.to_bytes(1, 'big') + b';'.join((bytes(item) for item in self.items))
 
 
 if __name__ == '__main__':
@@ -46,7 +80,7 @@ if __name__ == '__main__':
     args = PARSER.parse_args()
     if args.list:
         # ===== Send the ListItems Command and print the list of items when received =====
-        with ipc_mngr.Client((args.address, args.port), authkey=args.authkey) as client:
+        with BytesAckClient((args.address, args.port), authkey=args.authkey) as client:
             # Send the command
             client.send(ListItems())
 
@@ -66,7 +100,7 @@ if __name__ == '__main__':
             name, value = input('Enter Name=value: ').split('=')
         item = Item(name.strip(), int(value))
 
-        with ipc_mngr.Client((args.address, args.port), authkey=args.authkey) as client:
+        with BytesAckClient((args.address, args.port), authkey=args.authkey) as client:
             # Send the command
             client.send(item)
 
@@ -88,9 +122,9 @@ if __name__ == '__main__':
             elif isinstance(cmd, ListItems):
                 # Return a list of all items.
                 li = ListItems([Item(k, v) for k, v in ITEMS.items()])
-                sock.send(li)
+                BytesAckListener.send_socket(sock, li)
 
-        listener = ipc_mngr.Listener((args.address, args.port), authkey=args.authkey)
+        listener = BytesAckListener((args.address, args.port), authkey=args.authkey)
         listener.msg_handler = msg_handler
-        print("listening ...")
+        print('listening ...')
         listener.listen()  # Listen forever
