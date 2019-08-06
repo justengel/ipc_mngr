@@ -1,5 +1,5 @@
 name = 'ipc_mngr'
-version = '0.0.2'
+version = '1.0.0'
 description = 'Interprocess Communication (IPC) Manager to help create a Command structure for sending and receiving messages between processes.'
 url = 'https://github.com/justengel/ipc_mngr'
 author = 'Justin Engel'
