@@ -39,3 +39,38 @@ Simple Listener/Client
 Schedule Example
 ----------------
 See tests/schedule_run directory for how to use this as a permanent job scheduler.
+
+
+Stream Audio Example
+--------------------
+See tests/stream_audio directory for how to use the Streamer and StreamClient class.
+
+.. code-block:: python
+
+    import ipc_mngr
+
+    with ipc_mngr.Streamer(('127.0.0.1', 8222), authkey='12345') as streamer:
+        while True:
+            streamer.broadcast(1)  # streamer.stream(1)
+
+
+.. code-block:: python
+
+    import ipc_mngr
+    import time
+
+    SECONDS = 5
+    data = []
+
+    def save_data(client, value):
+        data.append(value)
+
+    with ipc_mngr.StreamClient(('127.0.0.1', 8222), authkey='12345') as client:
+        start = time.time()
+        client.stream_handler = save_data
+
+        # Save data for 5 seconds
+        while time.time() - start < SECONDS:
+            time.sleep(1)
+
+    print('Collected {} samples'.format(len(data)))

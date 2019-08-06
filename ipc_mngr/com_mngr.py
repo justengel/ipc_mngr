@@ -55,7 +55,8 @@ class Listener(MpListener):
         if isinstance(authkey, str):
             authkey = authkey.encode('utf-8')
 
-        self.clients = []
+        # self.clients = []
+        self._thread = None
         super(Listener, self).__init__(address=address, family=family, backlog=backlog, authkey=authkey)
 
     @classmethod
@@ -89,20 +90,22 @@ class Listener(MpListener):
         """Send data to the connection."""
         sock.send(data)
 
-    def client_connected(self, sock):
+    def client_connected(self, sock, address):
         """Notify that a client was connected.
 
         Args:
             sock (socket.socket/Connection): Client socket that was accepted.
+            address (tuple): Tuple of ('IP Address', port)
         """
         # self.clients.append(sock)
         # print('Client connected {}!'.format(id(sock)))
 
-    def client_disconnected(self, sock):
+    def client_disconnected(self, sock, address):
         """Notify that a client was disconnected.
 
         Args:
             sock (socket.socket/Connection): Client socket that was accepted.
+            address (tuple): Tuple of ('IP Address', port)
         """
         # try:
         #     self.clients.remove(sock)
@@ -110,21 +113,21 @@ class Listener(MpListener):
         #     pass
         # print('Client disconnected {}!'.format(id(sock)))
 
-    def listener_handler(self, alive, sock):
+    def listener_handler(self, alive, sock, address):
         """Continuously listen for communication"""
-        self.client_connected(sock)
+        self.client_connected(sock, address)
 
         while alive.is_set():
             cmd = None
             try:
                 cmd = self.recv_socket(sock)
                 self.msg_handler(sock, cmd)  # Custom user function
-            except EOFError:
+            except (EOFError, ConnectionResetError):
                 break  # Socket disconnected
             except IPCError as err:
                 self.error_handler(sock, err)
 
-        self.client_disconnected(sock)
+        self.client_disconnected(sock, address)
 
     def is_running(self):
         """Return if the Listener is running and listening for connections to run commands."""
@@ -133,16 +136,26 @@ class Listener(MpListener):
         except AttributeError:
             return False
 
+    def start(self):
+        """Start the stream client thread."""
+        self.alive.set()
+        self._thread = threading.Thread(target=self.listen)
+        self._thread.daemon = True
+        self._thread.start()
+
     def listen(self):
         """Listen for incoming connections and block forever."""
         self.alive.set()
 
-        # with self:
         while self.alive.is_set():
-            sock = self.accept()
-            th = threading.Thread(target=self.listener_handler, args=(self.alive, sock))
-            th.daemon = True  # Python keeps track and a reference of all daemon threads
-            th.start()
+            try:
+                sock = self.accept()
+                address = self.last_accepted
+                th = threading.Thread(target=self.listener_handler, args=(self.alive, sock, address))
+                th.daemon = True  # Python keeps track and a reference of all daemon threads
+                th.start()
+            except OSError:
+                break
 
         self.close()
 
@@ -154,11 +167,24 @@ class Listener(MpListener):
             self.alive.clear()
         except:
             pass
+        try:
+            self._thread.join(0)
+        except:
+            pass
+        self._thread = None
 
     def close(self):
         """Close the bound socket or named pipe of `self`."""
         self.stop()
         super(Listener, self).close()
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        self.close()
+        return False
 
 
 class Client(object):
@@ -252,8 +278,11 @@ class Client(object):
         time.sleep(0.01)  # Could be sending a message
         self.client.close()
 
+    stop = close
+
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, exc_tb):
         self.close()
+        return False
