@@ -6,66 +6,9 @@ __all__ = ['Streamer', 'StreamClient', 'IPCError']
 
 
 class Streamer(Listener):
-    def __init__(self, address=None, family=None, backlog=1, authkey=None, alive=None):
-        """Initialize the listener object.
-
-        Args:
-            address (tuple/object): The address to be used by the bound socket or named pipe (EX: "IP Address", Port)
-            family (socket.family/str)[None]: Type of socket or named pipe to use (EX: 'AF_INET', 'AF_UNIX', 'AF_PIPE')
-            backlog (int)[1]: If a socket is used backlog is passed to the listen() method
-            authkey (bytes)[None]: The secret key (password) for an HMAC-based authentication challenge. No auth if None
-            alive (threading.Event) [None]: Threading alive Event to control the running state.
-
-        Raises:
-            AuthenticationError: If authkey is given and authentication fails
-        """
-        self.client_lock = threading.RLock()
-        self.clients = {}  # Hold {address: sock}
-        super().__init__(address=address, family=family, backlog=backlog, authkey=authkey, alive=alive)
-
     def stream(self, data):
         """Broadcast data to all clients."""
-        with self.client_lock:
-            for addr, sock in self.clients.items():
-                try:
-                    self.send_socket(sock, data)
-                except (ValueError, TypeError, Exception):
-                    pass
-
-    broadcast = stream
-
-    def client_connected(self, sock, address):
-        """Notify that a client was connected.
-
-        Args:
-            sock (socket.socket/Connection): Client socket that was accepted.
-            address (tuple): Tuple of ('IP Address', port)
-        """
-        with self.client_lock:
-            self.clients[address] = sock
-        # print('Client connected {}!'.format(id(sock)))
-
-    def client_disconnected(self, sock, address):
-        """Notify that a client was disconnected.
-
-        Args:
-            sock (socket.socket/Connection): Client socket that was accepted.
-            address (tuple): Tuple of ('IP Address', port)
-        """
-        with self.client_lock:
-            try:
-                self.clients.pop(address)
-            except (KeyError, TypeError, Exception):
-                pass
-        # print('Client disconnected {}!'.format(id(sock)))
-
-    def __enter__(self):
-        self.start()
-        return self
-
-    def __exit__(self, exc_type, exc_value, exc_tb):
-        self.close()
-        return False
+        self.broadcast(data)
 
 
 class StreamClient(Client):

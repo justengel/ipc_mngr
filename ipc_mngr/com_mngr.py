@@ -55,7 +55,8 @@ class Listener(MpListener):
         if isinstance(authkey, str):
             authkey = authkey.encode('utf-8')
 
-        # self.clients = []
+        self.client_lock = threading.RLock()
+        self.clients = {}  # Hold {address: sock}
         self._thread = None
         super(Listener, self).__init__(address=address, family=family, backlog=backlog, authkey=authkey)
 
@@ -90,6 +91,15 @@ class Listener(MpListener):
         """Send data to the connection."""
         sock.send(data)
 
+    def broadcast(self, data):
+        """Broadcast data to all clients."""
+        with self.client_lock:
+            for addr, sock in self.clients.items():
+                # try:
+                self.send_socket(sock, data)
+                # except (ValueError, TypeError, Exception) as err:
+                #     pass
+
     def client_connected(self, sock, address):
         """Notify that a client was connected.
 
@@ -97,7 +107,8 @@ class Listener(MpListener):
             sock (socket.socket/Connection): Client socket that was accepted.
             address (tuple): Tuple of ('IP Address', port)
         """
-        # self.clients.append(sock)
+        with self.client_lock:
+            self.clients[address] = sock
         # print('Client connected {}!'.format(id(sock)))
 
     def client_disconnected(self, sock, address):
@@ -107,10 +118,11 @@ class Listener(MpListener):
             sock (socket.socket/Connection): Client socket that was accepted.
             address (tuple): Tuple of ('IP Address', port)
         """
-        # try:
-        #     self.clients.remove(sock)
-        # except:
-        #     pass
+        with self.client_lock:
+            try:
+                self.clients.pop(address)
+            except (KeyError, TypeError, Exception):
+                pass
         # print('Client disconnected {}!'.format(id(sock)))
 
     def listener_handler(self, alive, sock, address):
