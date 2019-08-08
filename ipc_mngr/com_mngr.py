@@ -228,7 +228,20 @@ class Client(object):
         if isinstance(authkey, str):
             authkey = authkey.encode('utf-8')
 
-        self.client = MpClient(address, family=family, authkey=authkey)  # Why is this a function!? F
+        # Connection settings
+        self.address = address
+        self.family = family
+        # self.authkey = authkey  # Probably not good to save the authkey
+        self.client = None
+        self.connect(address, family, authkey)
+
+    def connect(self, address=None, family=None, authkey=None):
+        """Connect the multiprocessing client."""
+        if address is not None:
+            self.address = address
+        if family is not None:
+            self.family = family
+        self.client = MpClient(self.address, family=self.family, authkey=authkey)  # Why is this a function!? F
 
     def msg_handler(self, cmd):
         """Handle the response after sending a command.
